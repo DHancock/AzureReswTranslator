@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -27,8 +26,12 @@ namespace AzureReswTranslator;
 
 public sealed partial class MainWindow : Window
 {
+    private const string cAzureEndPoint = "https://api.cognitive.microsofttranslator.com";
+
     private readonly IntPtr windowPtr;
     private StorageFile? sourceFile;
+
+    private static readonly HttpClient httpClient = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(15) });
 
     public MainWindow()
     {
@@ -37,17 +40,17 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Title = "Azure Resw Translator";
 
-        CenterInPrimaryDisplay(clientWidth: 1060, clientHieght: 300);
+        CenterInPrimaryDisplay(clientWidth: 1060, clientHeight: 255);
 
         LayoutRoot.Loaded += LayoutRoot_Loaded;
     }
 
-    private void CenterInPrimaryDisplay(int clientWidth, int clientHieght)
+    private void CenterInPrimaryDisplay(int clientWidth, int clientHeight)
     {
-        double scaleFactor = PInvoke.GetDpiForWindow((HWND)windowPtr) / 96.0 ;
+        double scaleFactor = PInvoke.GetDpiForWindow((HWND)windowPtr) / 96.0;
 
         int deviceWidth = (int)(clientWidth * scaleFactor);
-        int deviceHeight = (int)(clientHieght * scaleFactor);
+        int deviceHeight = (int)(clientHeight * scaleFactor);
 
         RectInt32 windowArea;
         RectInt32 workArea = DisplayArea.Primary.WorkArea;
@@ -61,10 +64,29 @@ public sealed partial class MainWindow : Window
     }
 
 
-    private void LayoutRoot_Loaded(object sender, RoutedEventArgs e)
+    private async void LayoutRoot_Loaded(object sender, RoutedEventArgs e)
     {
-        FromLanguage.SelectedIndex = LanguageCodes.FindIndex(x => x.Code == "en");
-        ToLanguage.SelectedIndex = LanguageCodes.FindIndex(x => x.Code == "fr");
+        Dictionary<string, LanguageData> languages = await Task.Run(LoadLanguages);
+
+        if (languages.Count == 0)
+        {
+            await ErrorDialog("Failed to read available languages.");
+        }
+        else
+        {
+            FromLanguage.ItemsSource = languages.Values;
+            ToLanguage.ItemsSource = languages.Values;
+
+            if (languages.TryGetValue("en", out LanguageData? fromValue))
+            {
+                FromLanguage.SelectedItem = fromValue;
+            }
+
+            if (languages.TryGetValue("fr", out LanguageData? toValue))
+            {
+                ToLanguage.SelectedItem = toValue;
+            }
+        }
     }
 
     private async void SelectFile_Click(object sender, RoutedEventArgs e)
@@ -165,7 +187,7 @@ public sealed partial class MainWindow : Window
                 XAttribute? nameAttrib = resHeader.Attribute("name");
 
                 if ((nameAttrib != null) && (nameAttrib.Value == "version") && (resHeader.Value == "2.0"))
-                {  
+                {
                     return true;
                 }
             }
@@ -173,6 +195,62 @@ public sealed partial class MainWindow : Window
 
         await ErrorDialog("Invalid resw xml");
         return false;
+    }
+
+    private async Task<Dictionary<string, LanguageData>> LoadLanguages()
+    {
+        using (HttpRequestMessage request = new())
+        {
+            request.Method = HttpMethod.Get;
+            request.RequestUri = new Uri(cAzureEndPoint + "/languages?api-version=3.0&scope=translation");
+
+            HttpResponseMessage response = await httpClient.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string result = await response.Content.ReadAsStringAsync();
+
+                LanguageRoot? root = JsonSerializer.Deserialize<LanguageRoot>(result);
+
+                if (root is not null)
+                {
+                    foreach (KeyValuePair<string, LanguageData> pair in root.Translation)
+                    {
+                        pair.Value.Code = pair.Key;
+                    }
+
+                    return root.Translation;
+                }
+            }
+        }
+
+        return new();
+    }
+
+    private sealed class LanguageRoot
+    {
+        [JsonPropertyName("translation")]
+        public Dictionary<string, LanguageData> Translation { get; set; } = new();
+    }
+
+    private sealed class LanguageData
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("nativeName")]
+        public string NativeName { get; set; } = string.Empty;
+
+        [JsonPropertyName("dir")]
+        public string Direction { get; set; } = string.Empty;
+
+        [JsonIgnore]
+        public string Code { get; set; } = string.Empty;
+
+        public override string ToString()
+        {
+            return $"{Code} - {Name}";
+        }
     }
 
     private async Task<List<string>> TranslateSource(List<SourceEntry> source)
@@ -185,47 +263,44 @@ public sealed partial class MainWindow : Window
         if (source.Count > 0)
         {
             string requestBody = JsonSerializer.Serialize(source);
-            string route = $"/translate?api-version=3.0&from={LanguageCodes[FromLanguage.SelectedIndex].Code}&to={LanguageCodes[ToLanguage.SelectedIndex].Code}";
+            string route = $"/translate?api-version=3.0&from={((LanguageData)FromLanguage.SelectedItem).Code}&to={((LanguageData)ToLanguage.SelectedItem).Code}";
 
-            using (HttpClient client = new())
+            using (HttpRequestMessage request = new())
             {
-                using (HttpRequestMessage request = new())
+                // Build the request.
+                request.Method = HttpMethod.Post;
+                request.RequestUri = new Uri(cAzureEndPoint + route);
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                request.Headers.Add("Ocp-Apim-Subscription-Key", AzureKey.Text);
+                request.Headers.Add("Ocp-Apim-Subscription-Region", AzureRegion.Text);
+
+                // Send the request and get response.
+                HttpResponseMessage response = await httpClient.SendAsync(request);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    // Build the request.
-                    request.Method = HttpMethod.Post;
-                    request.RequestUri = new Uri(AzureEndPoint.Text + route);
-                    request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                    request.Headers.Add("Ocp-Apim-Subscription-Key", AzureKey.Text);
-                    request.Headers.Add("Ocp-Apim-Subscription-Region", AzureRegion.Text);
+                    // Read response as a string.
+                    string result = await response.Content.ReadAsStringAsync();
 
-                    // Send the request and get response.
-                    HttpResponseMessage response = await client.SendAsync(request);
+                    List<TranslationRoot>? roList = JsonSerializer.Deserialize<List<TranslationRoot>>(result);
+                    Debug.Assert(roList is not null);
 
-                    if (response.IsSuccessStatusCode)
+                    if (roList is not null)
                     {
-                        // Read response as a string.
-                        string result = await response.Content.ReadAsStringAsync();
+                        Debug.Assert(roList.Count == source.Count);
 
-                        List<RootObject>? roList = JsonSerializer.Deserialize<List<RootObject>>(result);
-                        Debug.Assert(roList is not null);
-
-                        if (roList is not null)
+                        foreach (TranslationRoot root in roList)
                         {
-                            Debug.Assert(roList.Count == source.Count);
-
-                            foreach (RootObject root in roList)
+                            foreach (Translation translation in root.Translations)
                             {
-                                foreach (Translation translation in root.Translations)
-                                {
-                                    results.Add(translation.Text);
-                                }
+                                results.Add(translation.Text);
                             }
                         }
                     }
-                    else
-                    {
-                        await ErrorDialog($"Translation failed, Http error: {response.StatusCode}");
-                    }
+                }
+                else
+                {
+                    await ErrorDialog($"Translation failed, Http error: {response.StatusCode}");
                 }
             }
         }
@@ -234,13 +309,13 @@ public sealed partial class MainWindow : Window
     }
 
 
-    public sealed class RootObject
+    private sealed class TranslationRoot
     {
         [JsonPropertyName("translations")]
         public List<Translation> Translations { get; set; } = [];
     }
 
-    public sealed class Translation
+    private sealed class Translation
     {
         [JsonPropertyName("text")]
         public string Text { get; set; } = string.Empty;
@@ -253,7 +328,7 @@ public sealed partial class MainWindow : Window
     {
         // I'd like to just parse the xml document, replacing values with the translated text. However
         // when saving the xml document, the <value> element is removed and the content inlined. It's 
-        // valid xml, but the pri compiler obviously isn't loading the file as xml because wthout the <value> 
+        // valid xml, but the pri compiler obviously isn't loading the file as xml because without the <value> 
         // element it doesn't include any of the translations. Need to rebuild the resw file as text...
         const string preamble = """
             <?xml version="1.0" encoding="utf-8"?>
@@ -428,14 +503,6 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        if (string.IsNullOrWhiteSpace(AzureEndPoint.Text) ||
-            !Uri.TryCreate(AzureEndPoint.Text, UriKind.Absolute, out Uri? uri) ||
-            !((uri is not null) && (uri.Scheme == Uri.UriSchemeHttps)))
-        {
-            await ErrorDialog("Azure end point is invalid");
-            return false;
-        }
-
         if (string.IsNullOrWhiteSpace(AzureRegion.Text))
         {
             await ErrorDialog("Azure region is invalid");
@@ -445,6 +512,12 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(AzureKey.Text))
         {
             await ErrorDialog("Azure key is invalid");
+            return false;
+        }
+
+        if ((FromLanguage.SelectedIndex < 0) || (ToLanguage.SelectedIndex < 0))
+        {
+            await ErrorDialog("languages are invalid");
             return false;
         }
 
@@ -471,106 +544,4 @@ public sealed partial class MainWindow : Window
 
         await cd.ShowAsync();
     }
-
-    private record LanguageCode(string Code, string Description)
-    {
-        public override string ToString()
-        {
-            return $"{Description} - {Code}";
-        }
-    }
-
-    // common laguage codes
-    // a full list can be found at:
-    // https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry
-
-    private readonly List<LanguageCode> LanguageCodes = new List<LanguageCode>()
-    {
-        new LanguageCode("af", "Afrikaans"),
-        new LanguageCode("ar", "Arabic"),
-        new LanguageCode("az", "Azeri"),
-        new LanguageCode("be", "Belarusian"),
-        new LanguageCode("bg", "Bulgarian"),
-        new LanguageCode("ca", "Catalan"),
-        new LanguageCode("cs", "Czech"),
-        new LanguageCode("cy", "Welsh"),
-        new LanguageCode("da", "Danish"),
-        new LanguageCode("de", "German"),
-        new LanguageCode("dv", "Divehi"),
-        new LanguageCode("el", "Greek"),
-        new LanguageCode("en", "English"),
-        new LanguageCode("eo", "Esperanto"),
-        new LanguageCode("es", "Spanish"),
-        new LanguageCode("et", "Estonian"),
-        new LanguageCode("eu", "Basque"),
-        new LanguageCode("fa", "Farsi"),
-        new LanguageCode("fi", "Finnish"),
-        new LanguageCode("fo", "Faroese"),
-        new LanguageCode("fr", "French"),
-        new LanguageCode("gl", "Galician"),
-        new LanguageCode("gu", "Gujarati"),
-        new LanguageCode("he", "Hebrew"),
-        new LanguageCode("hi", "Hindi"),
-        new LanguageCode("hr", "Croatian"),
-        new LanguageCode("hu", "Hungarian"),
-        new LanguageCode("hy", "Armenian"),
-        new LanguageCode("id", "Indonesian"),
-        new LanguageCode("is", "Icelandic"),
-        new LanguageCode("it", "Italian"),
-        new LanguageCode("ja", "Japanese"),
-        new LanguageCode("ka", "Georgian"),
-        new LanguageCode("kk", "Kazakh"),
-        new LanguageCode("kn", "Kannada"),
-        new LanguageCode("ko", "Korean"),
-        new LanguageCode("kok", "Konkani"),
-        new LanguageCode("ky", "Kyrgyz"),
-        new LanguageCode("lt", "Lithuanian"),
-        new LanguageCode("lv", "Latvian"),
-        new LanguageCode("mi", "Maori"),
-        new LanguageCode("mk", "FYRO Macedonian"),
-        new LanguageCode("mn", "Mongolian"),
-        new LanguageCode("mr", "Marathi"),
-        new LanguageCode("ms", "Malay"),
-        new LanguageCode("mt", "Maltese"),
-        new LanguageCode("nb", "Norwegian"),
-        new LanguageCode("nl", "Dutch"),
-        new LanguageCode("ns", "Northern Sotho"),
-        new LanguageCode("pa", "Punjabi"),
-        new LanguageCode("pl", "Polish"),
-        new LanguageCode("ps", "Pashto"),
-        new LanguageCode("pt", "Portuguese"),
-        new LanguageCode("qu", "Quechua"),
-        new LanguageCode("ro", "Romanian"),
-        new LanguageCode("ru", "Russian"),
-        new LanguageCode("sa", "Sanskrit"),
-        new LanguageCode("se", "Sami"),
-        new LanguageCode("sk", "Slovak"),
-        new LanguageCode("sl", "Slovenian"),
-        new LanguageCode("sq", "Albanian"),
-        new LanguageCode("sv", "Swedish"),
-        new LanguageCode("sw", "Swahili"),
-        new LanguageCode("syr", "Syriac"),
-        new LanguageCode("ta", "Tamil"),
-        new LanguageCode("te", "Telugu"),
-        new LanguageCode("th", "Thai"),
-        new LanguageCode("tl", "Tagalog"),
-        new LanguageCode("tn", "Tswana"),
-        new LanguageCode("tr", "Turkish"),
-        new LanguageCode("tt", "Tatar"),
-        new LanguageCode("ts", "Tsonga"),
-        new LanguageCode("uk", "Ukrainian"),
-        new LanguageCode("ur", "Urdu"),
-        new LanguageCode("uz", "Uzbek"),
-        new LanguageCode("vi", "Vietnamese"),
-        new LanguageCode("xh", "Xhosa"),
-        new LanguageCode("zh", "Chinese"),
-        new LanguageCode("zh-Hans", "Chinese simplified script"),
-        new LanguageCode("zh-Hant", "Chinese traditional script"),
-        new LanguageCode("zh-CN", "Chinese (mainland)"),
-        new LanguageCode("zh-HK", "Chinese (Hong Kong)"),
-        new LanguageCode("zh-MO", "Chinese (Macau)"),
-        new LanguageCode("zh-SG", "Chinese (Singapore)"),
-        new LanguageCode("zh-TW", "Chinese (Taiwan)"),
-        new LanguageCode("zu", "Zulu"),
-    };
 }
