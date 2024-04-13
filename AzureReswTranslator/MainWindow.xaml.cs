@@ -95,9 +95,13 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(openPicker, windowPtr);
         openPicker.FileTypeFilter.Add(".resw");
 
-        sourceFile = await openPicker.PickSingleFileAsync();
+        StorageFile newSource = await openPicker.PickSingleFileAsync();
 
-        SourceReswPath.Text = (sourceFile is not null) ? sourceFile.Path : string.Empty;
+        if (newSource is not null)
+        {
+            sourceFile = newSource;
+            SourceReswPath.Text = sourceFile.Path;
+        }
     }
 
     private async void SaveAs_Click(object sender, RoutedEventArgs e)
