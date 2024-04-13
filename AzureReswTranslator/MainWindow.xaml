@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="AzureReswTranslator.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AzureReswTranslator"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <!-- left, top, right, bottom -->
+
+    <Grid x:Name="LayoutRoot" ColumnDefinitions="*" RowDefinitions="Auto,Auto,Auto" Margin="15,20,20,15">
+        <Grid.Resources>
+            <Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+                <Setter Property="Margin" Value="10,0,10,0"/>
+            </Style>
+            <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Margin" Value="15,0,0,0"/>
+            </Style>
+        </Grid.Resources>
+
+        <Grid ColumnDefinitions ="130,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+            <TextBlock Grid.Row="0" Text="Azure Key" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Row="1" Text="Azure Region" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            <TextBlock Grid.Row="2" Text="Azure End Point" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="AzureKey" PlaceholderText="enter key"/>
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="AzureRegion" Text="uksouth"/>
+            <TextBox Grid.Row="2" Grid.Column="1" x:Name="AzureEndPoint" Text="https://api.cognitive.microsofttranslator.com"/>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions ="130,*,Auto" Margin="0,10,10,0">
+            <TextBlock Grid.Column="0" Text="Source resw file" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1" x:Name="SourceReswPath" PlaceholderText="select source language resw file"/>
+            <Button Grid.Column="2" Content="Select Source" Click="SelectFile_Click"/>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions ="130,Auto,Auto,Auto,Auto" Margin="0,10,10,0">
+            <TextBlock Grid.Column="0" Text="translate from" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            <ComboBox Grid.Column="1" x:Name="FromLanguage" ItemsSource="{x:Bind LanguageCodes}"/>
+            <TextBlock Grid.Column="2" Text="to" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="3" x:Name="ToLanguage" ItemsSource="{x:Bind LanguageCodes}"/>
+            <Button Grid.Column="4" Content="Translate" Click="SaveAs_Click"/>
+        </Grid>
+    </Grid>
+</Window>

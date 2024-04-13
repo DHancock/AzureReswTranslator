@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    //"ReswAzureTranslator (Package)": {
+    //  "commandName": "MsixPackage"
+    //},
+    "ReswAzureTranslator (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
