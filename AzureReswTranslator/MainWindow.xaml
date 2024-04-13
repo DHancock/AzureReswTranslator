@@ -24,16 +24,14 @@
             </Style>
         </Grid.Resources>
 
-        <Grid ColumnDefinitions ="130,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+        <Grid ColumnDefinitions ="130,*" RowDefinitions="Auto,Auto" RowSpacing="10">
             <TextBlock Grid.Row="0" Text="Azure Key" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBlock Grid.Row="1" Text="Azure Region" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <TextBlock Grid.Row="2" Text="Azure End Point" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             <TextBox Grid.Row="0" Grid.Column="1" x:Name="AzureKey" PlaceholderText="enter key"/>
             <TextBox Grid.Row="1" Grid.Column="1" x:Name="AzureRegion" Text="uksouth"/>
-            <TextBox Grid.Row="2" Grid.Column="1" x:Name="AzureEndPoint" Text="https://api.cognitive.microsofttranslator.com"/>
         </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions ="130,*,Auto" Margin="0,10,10,0">
+        <Grid Grid.Row="1" ColumnDefinitions ="130,*,Auto" Margin="0,25,10,0">
             <TextBlock Grid.Column="0" Text="Source resw file" HorizontalAlignment="Right" VerticalAlignment="Center"/>
             <TextBox Grid.Column="1" x:Name="SourceReswPath" PlaceholderText="select source language resw file"/>
             <Button Grid.Column="2" Content="Select Source" Click="SelectFile_Click"/>
@@ -41,9 +39,9 @@
 
         <Grid Grid.Row="2" ColumnDefinitions ="130,Auto,Auto,Auto,Auto" Margin="0,10,10,0">
             <TextBlock Grid.Column="0" Text="translate from" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-            <ComboBox Grid.Column="1" x:Name="FromLanguage" ItemsSource="{x:Bind LanguageCodes}"/>
+            <ComboBox Grid.Column="1" x:Name="FromLanguage"/>
             <TextBlock Grid.Column="2" Text="to" VerticalAlignment="Center"/>
-            <ComboBox Grid.Column="3" x:Name="ToLanguage" ItemsSource="{x:Bind LanguageCodes}"/>
+            <ComboBox Grid.Column="3" x:Name="ToLanguage"/>
             <Button Grid.Column="4" Content="Translate" Click="SaveAs_Click"/>
         </Grid>
     </Grid>
