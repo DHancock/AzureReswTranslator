@@ -210,23 +210,30 @@ public sealed partial class MainWindow : Window
             request.Method = HttpMethod.Get;
             request.RequestUri = new Uri(cAzureEndPoint + "/languages?api-version=3.0&scope=translation");
 
-            HttpResponseMessage response = await httpClient.SendAsync(request);
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                string result = await response.Content.ReadAsStringAsync();
+                HttpResponseMessage response = await httpClient.SendAsync(request);
 
-                LanguageRoot? root = JsonSerializer.Deserialize<LanguageRoot>(result);
-
-                if (root is not null)
+                if (response.IsSuccessStatusCode)
                 {
-                    foreach (KeyValuePair<string, LanguageData> pair in root.Translation)
-                    {
-                        pair.Value.Code = pair.Key;
-                    }
+                    string result = await response.Content.ReadAsStringAsync();
 
-                    return root.Translation;
+                    LanguageRoot? root = JsonSerializer.Deserialize<LanguageRoot>(result);
+
+                    if (root is not null)
+                    {
+                        foreach (KeyValuePair<string, LanguageData> pair in root.Translation)
+                        {
+                            pair.Value.Code = pair.Key;
+                        }
+
+                        return root.Translation;
+                    }
                 }
+            }
+            catch (Exception ex) // likely net's down
+            {
+                Debug.WriteLine(ex.ToString());
             }
         }
 
